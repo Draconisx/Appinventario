@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estoque Master - Full System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .aba-ativa { border-bottom: 3px solid #3b82f6; font-weight: bold; color: #1e40af; }
+        .card-clicavel { cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
+        .card-clicavel:active { transform: scale(0.96); background-color: #f3f4f6; }
+        .modal-blur { backdrop-filter: blur(8px); }
+        .bg-chat { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); }
+        @media print { .no-print { display: none !important; } .print-only { display: block !important; } }
+        .print-only { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-20">
+
+    <div id="modal-os" class="fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4 modal-blur no-print">
+        <div class="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="titulo-modal-os" class="font-black text-gray-800 uppercase tracking-tighter text-sm">Nova Ordem de Serviço</h3>
+                <button onclick="fecharModalOS()" class="text-gray-300 text-xl">✕</button>
+            </div>
+            <form id="form-os" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-gray-400 uppercase">Encanador</label>
+                        <input type="text" id="os-encanador" required class="w-full border-b border-gray-200 py-2 outline-none focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-gray-400 uppercase">Local</label>
+                        <input type="text" id="os-local" required class="w-full border-b border-gray-200 py-2 outline-none focus:border-blue-500 text-sm">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-gray-400 uppercase">Data/Hora</label>
+                        <input type="datetime-local" id="os-data" required class="w-full border-b border-gray-200 py-2 outline-none focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-gray-400 uppercase">Prioridade</label>
+                        <select id="os-prioridade" class="w-full border-b border-gray-200 py-2 outline-none focus:border-blue-500 text-sm">
+                            <option value="Baixa">Baixa</option>
+                            <option value="Média">Média</option>
+                            <option value="Urgente">Urgente</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase mb-2 block">Materiais</label>
+                    <div id="os-lista-materiais" class="max-h-[200px] overflow-y-auto border rounded-xl p-2 space-y-2 bg-gray-50"></div>
+                </div>
+                <div id="rodape-modal-os" class="flex gap-2">
+                    <button id="btn-salvar-os" type="button" onclick="salvarOS()" class="flex-1 bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition">GERAR E DEBITAR</button>
+                    <button id="btn-imprimir-modal" type="button" class="hidden flex-1 bg-gray-800 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition">IMPRIMIR O.S.</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="print-area" class="print-only p-10 text-gray-800">
+        <h1 class="text-2xl font-bold border-b-2 pb-2 mb-4 text-center">ORDEM DE SERVIÇO</h1>
+        <div id="print-content" class="space-y-4"></div>
+        <div class="mt-20 grid grid-cols-2 gap-10">
+            <div class="border-t border-black text-center pt-2 text-xs">Assinatura Encanador</div>
+            <div class="border-t border-black text-center pt-2 text-xs">Assinatura Responsável</div>
+        </div>
+    </div>
+
+    <div id="modal-uso" class="fixed inset-0 bg-black/60 z-[60] hidden flex items-center justify-center p-4 modal-blur no-print">
+        <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="modal-titulo" class="font-black text-gray-800 uppercase text-sm">Relatar Uso</h3>
+                <button onclick="fecharModal()" class="text-gray-300 text-xl">✕</button>
+            </div>
+            <div class="space-y-6">
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Descrição</label>
+                    <input type="text" id="input-obs" placeholder="Motivo da retirada" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quantidade</label>
+                    <input type="number" id="input-qtd" value="1" min="1" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-2xl font-black">
+                    <p id="info-estoque" class="text-[10px] text-blue-600 font-bold mt-2 uppercase"></p>
+                </div>
+                <button id="btn-confirmar-uso" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl active:scale-95 transition">CONFIRMAR BAIXA</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tela-login" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-10">
+            <h2 class="text-2xl font-black text-center text-gray-800 mb-8 uppercase tracking-tighter">Acesso Estoque</h2>
+            <div class="space-y-4">
+                <input type="text" id="auth-identificador" placeholder="Usuário ou Email" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition">
+                <input type="password" id="auth-senha" placeholder="Senha" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition">
+                <button onclick="autenticar()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl mt-4 shadow-lg active:scale-95 transition">ENTRAR</button>
+                <div class="text-center mt-6">
+                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Não tem uma conta? <button onclick="alternarAutenticacao('cadastro')" class="text-blue-600 hover:underline ml-1">Cadastre-se</button></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tela-cadastro" class="fixed inset-0 bg-gray-900 z-50 hidden flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-10">
+            <h2 class="text-2xl font-black text-center text-gray-800 mb-8 uppercase tracking-tighter">Nova Conta</h2>
+            <div class="space-y-4">
+                <input type="text" id="reg-usuario" placeholder="Nome de Usuário" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
+                <input type="email" id="reg-email" placeholder="E-mail" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
+                <input type="password" id="reg-senha" placeholder="Senha" class="w-full border-b-2 border-gray-100 py-3 outline-none focus:border-blue-500 transition text-sm">
+                <button onclick="registrarNovoUsuario()" class="w-full bg-green-600 text-white font-black py-4 rounded-2xl mt-4 shadow-lg active:scale-95 transition">CRIAR CONTA</button>
+                <div class="text-center mt-6">
+                    <button onclick="alternarAutenticacao('login')" class="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-blue-600 transition">Voltar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="max-w-2xl mx-auto p-4 hidden no-print">
+        <header class="bg-white shadow-sm rounded-2xl p-5 mb-6 sticky top-2 z-10 border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="text-xl font-black text-gray-800 tracking-tight">MEU ESTOQUE</h1>
+                    <span id="user-display" class="text-[10px] text-blue-500 font-black uppercase"></span>
+                </div>
+                <button onclick="sair()" class="text-[10px] font-black bg-red-50 text-red-500 px-4 py-2 rounded-xl uppercase">Sair</button>
+            </div>
+            <nav class="flex justify-around text-[10px] font-black text-gray-400 border-t pt-4 tracking-widest uppercase">
+                <button id="btn-estoque" onclick="mudarAba('estoque')" class="aba-ativa">Estoque</button>
+                <button id="btn-chat" onclick="mudarAba('chat')" class="relative">Chat <span id="global-unread-count" class="hidden absolute -top-1 -right-2 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center">0</span></button>
+                <button id="btn-relatorios" onclick="mudarAba('relatorios')">Relatórios</button>
+                <button id="btn-staff" onclick="mudarAba('staff')" class="hidden text-purple-600">🛡️ Staff</button>
+                <button id="btn-obs" onclick="mudarAba('obs')" class="text-red-500 hidden">⚠️ Alertas</button>
+            </nav>
+        </header>
+
+        <section id="aba-estoque" class="aba">
+            <div class="relative mb-4"><input type="search" id="input-busca" oninput="filtrarItens()" placeholder="Buscar item..." class="w-full bg-gray-100 border-none rounded-xl py-3 pl-10 text-sm outline-none"><span class="absolute left-3 top-3.5 opacity-30">🔍</span></div>
+            <div id="controles-admin" class="hidden grid grid-cols-2 gap-2 mb-4">
+                <button onclick="criarCategoria()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase shadow-sm">Nova Categoria</button>
+                <button onclick="criarItem()" class="bg-white border border-gray-200 px-2 py-3 rounded-xl text-[8px] font-black uppercase shadow-sm">Novo Produto</button>
+                <button onclick="adicionarQuantidadeEstoque()" class="bg-green-600 text-white px-2 py-3 rounded-xl text-[8px] font-black uppercase shadow-lg">+ Entrada</button>
+                <button onclick="abrirModalOS()" class="bg-blue-600 text-white px-2 py-3 rounded-xl text-[8px] font-black uppercase shadow-lg">Ordem de Serviço</button>
+            </div>
+            <div id="lista-estoque" class="space-y-4"></div>
+        </section>
+
+        <section id="aba-relatorios" class="aba hidden">
+            <div class="mb-6"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Ordens de Serviço Salvas</h2><div id="historico-os" class="space-y-3"></div></div>
+            <div class="mb-6"><h2 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Movimentação Anual</h2><div id="container-anos" class="space-y-4"></div></div>
+        </section>
+
+        <section id="aba-chat" class="aba hidden"><div id="contatos-container" class="space-y-2"></div></section>
+        <section id="aba-staff" class="aba hidden"><div id="lista-usuarios-staff" class="space-y-2"></div></section>
+        <section id="aba-obs" class="aba hidden"><div id="lista-obs" class="space-y-3"></div></section>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const SENHA_ADMIN = "eta2026estoque";
+        const ADMIN_NAME = "Guilherme Cardoso Cirilo";
+
+        let usuarioAtual = null, todosOsItens = [], contatoAtivo = null;
+
+        window.onload = () => { const salvo = localStorage.getItem('usuario_estoque'); if (salvo) { usuarioAtual = JSON.parse(salvo); abrirApp(); } };
+
+        // --- SISTEMA DE AUTENTICAÇÃO ---
+        function alternarAutenticacao(tipo) {
+            document.getElementById('tela-login').classList.toggle('hidden', tipo === 'cadastro');
+            document.getElementById('tela-cadastro').classList.toggle('hidden', tipo !== 'cadastro');
+        }
+
+        async function autenticar() {
+            const iden = document.getElementById('auth-identificador').value.trim(), senha = document.getElementById('auth-senha').value.trim();
+            let res = (iden === 'admin' && senha === SENHA_ADMIN) ? { nome_usuario: ADMIN_NAME } : null;
+            if (!res) { const { data } = await _supabase.from('usuarios').select('*').or(`email.eq.${iden.toLowerCase()},nome_usuario.eq.${iden}`).eq('senha', senha).maybeSingle(); res = data; }
+            if (res) { usuarioAtual = res; localStorage.setItem('usuario_estoque', JSON.stringify(res)); abrirApp(); } else alert("Credenciais Inválidas!");
+        }
+
+        function abrirApp() {
+            document.getElementById('tela-login').classList.add('hidden');
+            document.getElementById('tela-cadastro').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            const isAdmin = (usuarioAtual.nome_usuario === ADMIN_NAME);
+            document.getElementById('user-display').innerText = (isAdmin ? "ADMIN | " : "") + usuarioAtual.nome_usuario;
+            document.getElementById('btn-staff').classList.toggle('hidden', !isAdmin);
+            document.getElementById('controles-admin').classList.toggle('hidden', !isAdmin);
+            carregarEstoque();
+            renderizarContatos();
+        }
+
+        function sair() { localStorage.removeItem('usuario_estoque'); location.reload(); }
+
+        // --- GESTÃO DE ESTOQUE ---
+        async function carregarEstoque() {
+            const { data } = await _supabase.from('itens').select('*, categorias(nome)').order('nome');
+            todosOsItens = data || [];
+            renderizarItens(todosOsItens);
+        }
+
+        function renderizarItens(itens) {
+            const lista = document.getElementById('lista-estoque'), categorias = {};
+            itens.forEach(i => { const cat = i.categorias?.nome || "GERAL"; if (!categorias[cat]) categorias[cat] = []; categorias[cat].push(i); });
+            lista.innerHTML = Object.keys(categorias).map(cat => `
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+                    <div class="bg-gray-50 px-5 py-2 text-[9px] font-black text-gray-400 uppercase border-b tracking-widest">${cat}</div>
+                    ${categorias[cat].map(item => `
+                        <div onclick='abrirModalUso(${JSON.stringify(item)})' class="p-5 border-b last:border-0 card-clicavel flex justify-between items-center">
+                            <div><p class="font-bold text-gray-800 text-sm">${item.nome}</p><p class="text-[11px] font-black text-blue-500 uppercase">Qtd: ${item.quantidade}</p></div>
+                        </div>
+                    `).join('')}
+                </div>`).join('');
+        }
+
+        async function criarCategoria() {
+            const n = prompt("Nome da nova categoria:");
+            if(n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); }
+        }
+
+        async function criarItem() {
+            const { data: cats } = await _supabase.from('categorias').select('*');
+            if(!cats || cats.length === 0) return alert("Crie uma categoria primeiro!");
+            const idx = prompt("Selecione a Categoria:\n" + cats.map((c, i) => `${i}) ${c.nome}`).join('\n'));
+            const n = prompt("Nome do Produto:");
+            const q = parseInt(prompt("Quantidade inicial:", 0));
+            if (n && cats[idx]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: cats[idx].id, quantidade: q }]); carregarEstoque(); }
+        }
+
+        async function adicionarQuantidadeEstoque() {
+            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
+            const listaTxt = itens.map((item, index) => `${index}) ${item.nome} (${item.quantidade})`).join('\n');
+            const escolha = prompt("Selecione o número do item:\n" + listaTxt);
+            if (escolha !== null && itens[escolha]) {
+                const qtd = parseInt(prompt("Quanto deseja adicionar?"));
+                if (!isNaN(qtd) && qtd > 0) {
+                    await _supabase.from('itens').update({ quantidade: itens[escolha].quantidade + qtd }).eq('id', itens[escolha].id);
+                    await _supabase.from('historico_movimentacao').insert([{ tipo: 'ENTRADA', quantidade: qtd, item_id: itens[escolha].id }]);
+                    carregarEstoque();
+                }
+            }
+        }
+
+        // --- ORDEM DE SERVIÇO (CRIAÇÃO E VISUALIZAÇÃO) ---
+        function abrirModalOS(osParaVisualizar = null) {
+            const container = document.getElementById('os-lista-materiais');
+            const titulo = document.getElementById('titulo-modal-os');
+            const btnSalvar = document.getElementById('btn-salvar-os');
+            const btnImprimir = document.getElementById('btn-imprimir-modal');
+            
+            // Reset do Formulário
+            document.getElementById('form-os').reset();
+            const inputs = document.querySelectorAll('#form-os input, #form-os select');
+            
+            if (osParaVisualizar) {
+                // MODO VISUALIZAÇÃO
+                titulo.innerText = `O.S. #${osParaVisualizar.id} - Visualização`;
+                document.getElementById('os-encanador').value = osParaVisualizar.encanador;
+                document.getElementById('os-local').value = osParaVisualizar.local;
+                document.getElementById('os-data').value = osParaVisualizar.data;
+                document.getElementById('os-prioridade').value = osParaVisualizar.prioridade;
+                
+                inputs.forEach(i => i.disabled = true);
+                btnSalvar.classList.add('hidden');
+                btnImprimir.classList.remove('hidden');
+                btnImprimir.onclick = () => imprimirOS(osParaVisualizar);
+
+                container.innerHTML = osParaVisualizar.itens.map(i => `
+                    <div class="flex items-center justify-between p-2 bg-white rounded-lg border-l-2 border-blue-500">
+                        <span class="text-[10px] font-bold uppercase">${i.nome}</span>
+                        <span class="text-xs font-black text-blue-600">Qtd: ${i.qtd}</span>
+                    </div>`).join('');
+            } else {
+                // MODO CRIAÇÃO
+                titulo.innerText = "Nova Ordem de Serviço";
+                inputs.forEach(i => i.disabled = false);
+                btnSalvar.classList.remove('hidden');
+                btnImprimir.classList.add('hidden');
+
+                container.innerHTML = todosOsItens.map(i => `
+                    <div class="flex items-center justify-between p-2 bg-white rounded-lg shadow-sm">
+                        <span class="text-[10px] font-bold uppercase truncate w-32">${i.nome}</span>
+                        <input type="number" data-id="${i.id}" data-nome="${i.nome}" data-estoque="${i.quantidade}" value="0" min="0" max="${i.quantidade}" class="os-item-qtd w-12 border rounded text-center text-xs">
+                    </div>`).join('');
+            }
+            
+            document.getElementById('modal-os').classList.remove('hidden');
+        }
+
+        function fecharModalOS() { document.getElementById('modal-os').classList.add('hidden'); }
+
+        async function salvarOS() {
+            const enc = document.getElementById('os-encanador').value, loc = document.getElementById('os-local').value, dat = document.getElementById('os-data').value, pri = document.getElementById('os-prioridade').value;
+            if(!enc || !loc || !dat) return alert("Preencha os campos!");
+            
+            const selecionados = [];
+            document.querySelectorAll('.os-item-qtd').forEach(input => {
+                const q = parseInt(input.value);
+                if(q > 0) selecionados.push({ id: input.dataset.id, nome: input.dataset.nome, qtd: q, estoqueAntes: parseInt(input.dataset.estoque) });
+            });
+
+            if(selecionados.length === 0) return alert("Selecione materiais!");
+
+            for(const item of selecionados) {
+                await _supabase.from('itens').update({ quantidade: item.estoqueAntes - item.qtd }).eq('id', item.id);
+                await _supabase.from('historico_movimentacao').insert([{ tipo: 'SAIDA', quantidade: item.qtd, item_id: item.id, observacao: `OS: ${loc}` }]);
+            }
+
+            const osObj = { id: Date.now(), encanador: enc, local: loc, data: dat, prioridade: pri, itens: selecionados };
+            const hist = JSON.parse(localStorage.getItem('historico_os') || "[]");
+            hist.unshift(osObj); localStorage.setItem('historico_os', JSON.stringify(hist));
+
+            alert("O.S. Gerada!"); fecharModalOS(); carregarEstoque(); renderizarHistoricoOS();
+        }
+
+        function renderizarHistoricoOS() {
+            const h = JSON.parse(localStorage.getItem('historico_os') || "[]");
+            document.getElementById('historico-os').innerHTML = h.map(os => `
+                <div onclick='abrirModalOS(${JSON.stringify(os)})' class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm card-clicavel">
+                    <div>
+                        <p class="text-[8px] font-black text-blue-500 uppercase">#${os.id}</p>
+                        <p class="font-bold text-xs uppercase">${os.local}</p>
+                        <p class="text-[9px] text-gray-400">${os.encanador}</p>
+                    </div>
+                    <span class="text-[8px] font-black px-2 py-1 rounded-full ${os.prioridade === 'Urgente' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'} uppercase">${os.prioridade}</span>
+                </div>`).join('') || '<p class="text-center text-[10px] text-gray-400 py-4">Nenhuma ordem salva.</p>';
+        }
+
+        function imprimirOS(os) {
+            const content = document.getElementById('print-content');
+            content.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 border-b pb-4 mb-4">
+                    <p><strong>Encanador:</strong> ${os.encanador}</p><p><strong>Local:</strong> ${os.local}</p>
+                    <p><strong>Data:</strong> ${new Date(os.data).toLocaleString()}</p><p><strong>Prioridade:</strong> ${os.prioridade}</p>
+                </div>
+                <table class="w-full text-left border-collapse">
+                    <thead><tr class="border-b"><th>Material</th><th class="text-right">Qtd</th></tr></thead>
+                    <tbody>${os.itens.map(i => `<tr><td>${i.nome}</td><td class="text-right">${i.qtd}</td></tr>`).join('')}</tbody>
+                </table>`;
+            window.print();
+        }
+
+        // --- OUTRAS FUNÇÕES ---
+        function mudarAba(aba) { 
+            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden')); 
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa')); 
+            document.getElementById(`aba-${aba}`).classList.remove('hidden'); 
+            document.getElementById(`btn-${aba}`).classList.add('aba-ativa'); 
+            if(aba === 'relatorios') renderizarHistoricoOS();
+        }
+
+        function renderizarContatos() {
+            _supabase.from('usuarios').select('nome_usuario').neq('nome_usuario', usuarioAtual.nome_usuario).then(({data}) => {
+                document.getElementById('contatos-container').innerHTML = data.map(u => `
+                    <div class="bg-white p-4 rounded-2xl border"><span class="font-bold text-xs uppercase">${u.nome_usuario}</span></div>`).join('');
+            });
+        }
+
+        function abrirModalUso(item) {
+            document.getElementById('modal-titulo').innerText = item.nome;
+            document.getElementById('info-estoque').innerText = `Estoque: ${item.quantidade}`;
+            document.getElementById('modal-uso').classList.remove('hidden');
+            document.getElementById('btn-confirmar-uso').onclick = async () => {
+                const q = parseInt(document.getElementById('input-qtd').value);
+                if(q > 0 && q <= item.quantidade) {
+                    await _supabase.from('itens').update({ quantidade: item.quantidade - q }).eq('id', item.id);
+                    await _supabase.from('historico_movimentacao').insert([{ tipo: 'SAIDA', quantidade: q, item_id: item.id }]);
+                    document.getElementById('modal-uso').classList.add('hidden'); carregarEstoque();
+                }
+            };
+        }
+        function fecharModal() { document.getElementById('modal-uso').classList.add('hidden'); }
+    </script>
+</body>
+</html>
