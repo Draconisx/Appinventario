@@ -43,8 +43,23 @@
                         <input type="datetime-local" id="os-data-hora" required class="w-full border rounded-xl p-3 text-sm outline-none">
                     </div>
                     <div>
+                        <label class="text-[9px] font-black text-gray-400 uppercase">Prioridade</label>
+                        <select id="os-prioridade" required class="w-full border rounded-xl p-3 text-sm outline-none bg-white font-bold">
+                            <option value="Baixa">🟢 BAIXA</option>
+                            <option value="Normal" selected>🟡 NORMAL</option>
+                            <option value="Alta">🔴 ALTA</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
                         <label class="text-[9px] font-black text-gray-400 uppercase">Código da O.S.</label>
                         <input type="text" id="os-codigo-sequencial" readonly class="w-full border rounded-xl p-3 text-sm font-bold text-blue-600">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-black text-gray-400 uppercase">Quantidade</label>
+                        <input type="number" id="os-quantidade" required min="1" class="w-full border rounded-xl p-3 text-sm outline-none">
                     </div>
                 </div>
 
@@ -53,11 +68,6 @@
                     <select id="os-item-id" required class="w-full border rounded-xl p-3 text-sm outline-none bg-white">
                         <option value="">Selecione um item...</option>
                     </select>
-                </div>
-
-                <div>
-                    <label class="text-[9px] font-black text-gray-400 uppercase">Quantidade</label>
-                    <input type="number" id="os-quantidade" required min="1" class="w-full border rounded-xl p-3 text-sm outline-none">
                 </div>
 
                 <div>
@@ -104,7 +114,7 @@
             <nav class="flex justify-around text-[10px] font-black text-gray-400 border-t pt-4 uppercase tracking-widest">
                 <button id="btn-estoque" onclick="mudarAba('estoque')" class="aba-ativa">Estoque</button>
                 <button id="btn-relatorios" onclick="mudarAba('relatorios')">Feed O.S.</button>
-                <button id="btn-relatorio-final" onclick="mudarAba('relatorio-final')" class="">Relatório Detalhado</button>
+                <button id="btn-relatorio-final" onclick="mudarAba('relatorio-final')">Relatório Detalhado</button>
             </nav>
         </header>
 
@@ -116,6 +126,7 @@
                 <table class="w-full text-left border-collapse min-w-[1000px]">
                     <thead class="bg-gray-50 border-b">
                         <tr>
+                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Prioridade</th>
                             <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Cód O.S.</th>
                             <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Encanador</th>
                             <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Local</th>
@@ -138,7 +149,6 @@
         
         let cacheMovimentacoes = [];
         let cacheItens = [];
-        // Simulação do nível de acesso (Admin por padrão conforme seu cabeçalho)
         let nivelUsuario = "ADMIN"; 
 
         async function carregarDadosIniciais() {
@@ -193,7 +203,7 @@
                 cacheItens.map(it => `<option value="${it.id}">${it.nome} (Saldo: ${it.quantidade})</option>`).join('');
 
             const { data: ordens } = await _supabase.from('ordens_servico').select('id');
-            document.getElementById('os-codigo-sequencial').value = `O.S. ${(ordens.length + 1).toString().padStart(3, '0')}`;
+            document.getElementById('os-codigo-sequencial').value = `O.S. ${(ordens ? ordens.length + 1 : 1).toString().padStart(3, '0')}`;
             
             document.getElementById('form-nova-os').reset();
             document.getElementById('os-data-hora').value = new Date().toLocaleString("sv-SE").slice(0, 16);
@@ -213,10 +223,10 @@
             const localCompleto = document.getElementById('os-local').value;
             const finalidade = document.getElementById('os-descricao').value;
             const codigoOS = document.getElementById('os-codigo-sequencial').value;
+            const prioridade = document.getElementById('os-prioridade').value;
             const itemOriginal = cacheItens.find(i => i.id === itemId);
 
-            // 1. Grava em Movimentações (Compatibilidade Feed)
-            const detalheTexto = `ENCANADOR: ${encanador} || LOCAL: ${localCompleto} || FINALIDADE: ${finalidade}`;
+            const detalheTexto = `[PRIORIDADE: ${prioridade}] || ENCANADOR: ${encanador} || LOCAL: ${localCompleto} || FINALIDADE: ${finalidade}`;
             const { data: movData, error: movError } = await _supabase.from('movimentacoes').insert([{ 
                 item_id: itemId, 
                 quantidade_alterada: -qtd,
@@ -226,7 +236,6 @@
             if (!movError && movData[0]) {
                 await _supabase.from('observacoes').insert([{ movimentacao_id: movData[0].id, descricao: detalheTexto }]);
 
-                // 2. Grava na Nova Tabela 'ordens_servico'
                 const partes = localCompleto.split(',');
                 await _supabase.from('ordens_servico').insert([{
                     codigo_os: codigoOS,
@@ -235,12 +244,12 @@
                     endereco_numero: partes[1] ? partes[1].trim() : 'S/N',
                     material_id: itemId,
                     quantidade: qtd,
+                    prioridade: prioridade,
                     data_hora: new Date(document.getElementById('os-data-hora').value).toISOString(),
                     finalidade: finalidade,
-                    movimentacao_vinculo_id: movData[0].id // Campo para facilitar a exclusão casada
+                    movimentacao_vinculo_id: movData[0].id
                 }]);
 
-                // 3. Atualiza estoque
                 await _supabase.from('itens').update({ quantidade: itemOriginal.quantidade - qtd }).eq('id', itemId);
                 
                 alert("O.S. Gravada com Sucesso!");
@@ -248,7 +257,7 @@
                 await carregarEstoque();
                 await renderizarHistoricoOS();
             } else {
-                alert("Erro: " + movError.message);
+                alert("Erro: " + (movError ? movError.message : "Desconhecido"));
             }
             btn.disabled = false; btn.innerText = "Gravar Ordem de Serviço";
         };
@@ -272,8 +281,20 @@
         async function atualizarTabelaRelatorio() {
             const { data: listaOS } = await _supabase.from('ordens_servico').select('*, itens(nome)').order('data_hora', { ascending: false });
             if (!listaOS) return;
+
+            const badgeCores = {
+                'Alta': 'bg-red-500 text-white',
+                'Normal': 'bg-yellow-400 text-gray-900',
+                'Baixa': 'bg-green-500 text-white'
+            };
+
             document.getElementById('tabela-relatorio-corpo').innerHTML = listaOS.map(os => `
                 <tr class="border-b hover:bg-gray-50 text-[11px]">
+                    <td class="p-4">
+                        <span class="px-2 py-1 rounded font-black text-[8px] uppercase ${badgeCores[os.prioridade] || 'bg-gray-200'}">
+                            ${os.prioridade || 'Normal'}
+                        </span>
+                    </td>
                     <td class="p-4 font-black text-blue-600">${os.codigo_os}</td>
                     <td class="p-4 font-bold text-gray-700 uppercase">${os.encanador}</td>
                     <td class="p-4 text-gray-600">${os.endereco_rua}, ${os.endereco_numero}</td>
@@ -291,25 +312,15 @@
                 </tr>`).join('');
         }
 
-        // --- FUNÇÃO DE EXCLUSÃO COM PROTEÇÃO ADMIN ---
         async function excluirOSRelatorio(idOS, idItem, qtd, idMovVinculo) {
-            // Verifica o nível de acesso (Admin)
-            if (nivelUsuario !== "ADMIN") {
-                alert("Acesso Negado: Somente administradores podem excluir registros.");
-                return;
-            }
-
-            if (!confirm("Deseja realmente excluir esta O.S.? O estoque será devolvido automaticamente.")) return;
+            if (nivelUsuario !== "ADMIN") return alert("Somente administradores podem excluir.");
+            if (!confirm("Deseja realmente excluir esta O.S.? O estoque será devolvido.")) return;
 
             try {
-                // 1. Devolve o estoque
                 const { data: item } = await _supabase.from('itens').select('quantidade').eq('id', idItem).single();
                 await _supabase.from('itens').update({ quantidade: item.quantidade + qtd }).eq('id', idItem);
-
-                // 2. Remove da tabela ordens_servico
                 await _supabase.from('ordens_servico').delete().eq('id', idOS);
 
-                // 3. Remove das tabelas antigas para manter o Feed limpo
                 if (idMovVinculo && idMovVinculo !== 'undefined') {
                     await _supabase.from('observacoes').delete().eq('movimentacao_id', idMovVinculo);
                     await _supabase.from('movimentacoes').delete().eq('id', idMovVinculo);
@@ -319,11 +330,7 @@
                 await carregarEstoque();
                 await atualizarTabelaRelatorio();
                 await renderizarHistoricoOS();
-
-            } catch (error) {
-                console.error("Erro na exclusão:", error);
-                alert("Erro ao processar exclusão.");
-            }
+            } catch (e) { alert("Erro ao excluir."); }
         }
 
         window.verDetalheOS = (id) => {
