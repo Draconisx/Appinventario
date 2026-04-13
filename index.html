@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estoque ETA SJB - Sistema Integrado</title>
+    <title>Estoque Master Pro - Sistema Integrado</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -92,8 +92,8 @@
         <header class="bg-white shadow-sm rounded-2xl p-5 mb-6 border border-gray-100">
             <div class="flex justify-between items-center mb-4">
                 <div>
-                    <h1 class="text-xl font-black text-gray-800 tracking-tighter">Controle de Estoque ETA SJB</h1>
-                    <span id="user-status-display" class="text-[10px] text-blue-500 font-black uppercase tracking-widest">ADMIN | Guilherme</span>
+                    <h1 class="text-xl font-black text-gray-800 tracking-tighter">MEU ESTOQUE</h1>
+                    <span id="user-status-display" class="text-[10px] text-blue-500 font-black uppercase tracking-widest">ADMIN | Jardim</span>
                 </div>
                 
                 <div class="relative dropdown">
@@ -105,6 +105,7 @@
                             <button onclick="window.adicionarQuantidadeEstoque()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-green-600 hover:bg-green-50 rounded-xl">➕ Adicionar Estoque</button>
                             <hr class="my-1">
                             <button onclick="abrirFormOS()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-blue-600 hover:bg-blue-50 rounded-xl">📝 Gerar O.S.</button>
+                            <button onclick="imprimirOSBranco()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 rounded-xl">🖨️ Imprimir O.S. Branco</button>
                             <button onclick="mudarAba('relatorio-final')" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-purple-600 hover:bg-purple-50 rounded-xl">📊 Relatórios Detalhados</button>
                         </div>
                     </div>
@@ -168,6 +169,52 @@
             } else if(aba === 'relatorios') {
                 renderizarHistoricoOS();
             }
+        }
+
+        // --- FUNÇÃO DE IMPRESSÃO (SEM PRIORIDADE) ---
+        function imprimirOSBranco() {
+            const win = window.open('', '_blank');
+            win.document.write(`
+                <html>
+                <head>
+                    <title>Imprimir O.S. em Branco</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 40px; color: #333; }
+                        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 30px; }
+                        .field { margin-bottom: 25px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+                        .label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #666; display: block; }
+                        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+                        .box { border: 1px solid #000; height: 120px; margin-top: 10px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h2 style="margin:0">ORDEM DE SERVIÇO - PREENCHIMENTO MANUAL</h2>
+                        <p style="font-size: 12px">Controle de Estoque e Manutenção</p>
+                    </div>
+                    <div class="grid">
+                        <div class="field"><span class="label">Encanador</span></div>
+                        <div class="field"><span class="label">Local (Rua, Nº)</span></div>
+                    </div>
+                    <div class="grid">
+                        <div class="field"><span class="label">Data / Hora</span></div>
+                        <div class="field"><span class="label">Item do Inventário</span></div>
+                    </div>
+                    <div class="field">
+                        <span class="label">Quantidade</span>
+                    </div>
+                    <div class="field" style="border:none">
+                        <span class="label">Descrição / Finalidade</span>
+                        <div class="box"></div>
+                    </div>
+                    <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px;">
+                        Documento gerado para fins de registro manual de campo.
+                    </div>
+                </body>
+                </html>
+            `);
+            win.document.close();
+            win.print();
         }
 
         // --- GESTÃO DE PRODUTOS ---
