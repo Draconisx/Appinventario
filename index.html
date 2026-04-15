@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estoque ETA </title>
+    <title>Estoque ETA SJB</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -127,21 +127,6 @@
         </div>
     </div>
 
-    <div id="chat-container" class="fixed bottom-6 right-6 z-[500] flex flex-col items-end">
-        <div id="chat-widget" class="bg-white w-80 h-[450px] rounded-[24px] shadow-2xl flex flex-col mb-4 overflow-hidden border border-gray-200">
-            <div class="bg-blue-600 p-4 text-white flex justify-between items-center shadow-md">
-                <span class="text-[10px] font-black uppercase tracking-widest">Grupo de Suporte</span>
-                <button onclick="toggleChat()" class="text-xl">×</button>
-            </div>
-            <div id="chat-messages" class="flex-1 p-4 overflow-y-auto flex flex-col gap-2 bg-gray-50"></div>
-            <div class="p-3 bg-white border-t flex gap-2">
-                <input type="text" id="chat-input" placeholder="Escreva aqui..." class="flex-1 text-xs p-3 bg-gray-100 rounded-xl outline-none">
-                <button onclick="enviarMensagem()" class="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center font-bold">➤</button>
-            </div>
-        </div>
-        <button onclick="toggleChat()" class="bg-blue-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl">💬</button>
-    </div>
-
     <script>
         const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
@@ -151,7 +136,7 @@
         let ordensCache = [];
         let carrinhoOS = [];
 
-        window.onload = () => { if (userAtual) entrarNoApp(); carregarChat(); setInterval(carregarChat, 5000); };
+        window.onload = () => { if (userAtual) entrarNoApp(); };
 
         async function fazerLogin() {
             const u = document.getElementById('login-user').value.trim();
@@ -180,7 +165,6 @@
             menu.classList.toggle('hidden');
         }
 
-        // Funções Modal Usuário
         function abrirModalUsuario() { document.getElementById('modal-usuario').classList.remove('hidden'); document.getElementById('dropdown-config').classList.add('hidden'); }
         function fecharModalUsuario() { document.getElementById('modal-usuario').classList.add('hidden'); document.getElementById('form-usuario').reset(); }
         
@@ -189,15 +173,8 @@
             const user = document.getElementById('new-user-name').value.trim();
             const email = document.getElementById('new-user-email').value.trim();
             const pass = document.getElementById('new-user-pass').value.trim();
-            
             const { error } = await _supabase.from('usuarios_sistema').insert([{ username: user, email: email, senha: pass }]);
-            
-            if(!error) {
-                alert("Usuário cadastrado com sucesso!");
-                fecharModalUsuario();
-            } else {
-                alert("Erro ao cadastrar: " + error.message);
-            }
+            if(!error) { alert("Usuário cadastrado!"); fecharModalUsuario(); } else alert("Erro: " + error.message);
         }
 
         function mudarAba(idAba) {
@@ -219,7 +196,23 @@
 
         async function carregarOrdens() {
             const { data } = await _supabase.from('ordens_servico').select('*').order('data_hora', {ascending: false});
-            if(data) { ordensCache = data; document.getElementById('lista-ordens').innerHTML = data.map(os => `<div class="bg-white p-5 rounded-2xl border shadow-md"><h3 class="font-black uppercase">${os.nome_cliente}</h3><p class="text-[10px] text-gray-500 mb-4">${os.endereco}</p><button onclick="imprimirOS('${os.id}')" class="w-full bg-gray-800 text-white p-2 rounded-xl text-[10px] font-black">IMPRIMIR</button></div>`).join(''); }
+            if(data) {
+                ordensCache = data;
+                document.getElementById('lista-ordens').innerHTML = data.map(os => `
+                    <div class="bg-white p-5 rounded-2xl border shadow-md relative">
+                        ${userAtual === 'Guilherme' ? `<button onclick="excluirOrdem('${os.id}')" class="absolute top-4 right-4 text-gray-300 hover:text-red-500 text-xs">🗑️</button>` : ''}
+                        <h3 class="font-black uppercase pr-6">${os.nome_cliente}</h3>
+                        <p class="text-[10px] text-gray-500 mb-4">${os.endereco}</p>
+                        <button onclick="imprimirOS('${os.id}')" class="w-full bg-gray-800 text-white p-2 rounded-xl text-[10px] font-black">IMPRIMIR</button>
+                    </div>`).join('');
+            }
+        }
+
+        async function excluirOrdem(id) {
+            if(confirm("Deseja excluir esta Ordem de Serviço?")) {
+                const { error } = await _supabase.from('ordens_servico').delete().eq('id', id);
+                if(!error) carregarOrdens();
+            }
         }
 
         async function carregarHistorico() {
@@ -227,6 +220,7 @@
             container.innerHTML = `<p class="text-center text-[10px] font-black uppercase text-gray-400 p-10">Carregando movimentações...</p>`;
             const { data, error } = await _supabase.from('movimentacoes').select('*, itens(nome)').order('data_movimentacao', {ascending: false});
             if(error || !data) { container.innerHTML = `<p class="text-center text-red-500 text-[10px] font-black uppercase">ERRO AO CARREGAR</p>`; return; }
+            
             const mesesNomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
             const agrupado = {};
             data.forEach(mov => {
@@ -246,13 +240,14 @@
                         const sinal = isEntrada ? "+" : "";
                         const hora = new Date(mov.data_movimentacao).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
                         html += `
-                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
+                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center relative group">
                                 <div>
                                     <p class="font-black text-[11px] text-gray-800 uppercase leading-none">${mov.itens?.nome || 'Item Excluído'}</p>
                                     <p class="text-[8px] font-bold text-gray-400 uppercase mt-1">🕒 ${hora} • ${mov.tipo}</p>
                                 </div>
-                                <div class="text-right">
+                                <div class="flex items-center gap-4">
                                     <span class="font-black ${cor} text-[13px] tabular-nums">${sinal}${mov.quantidade_alterada} UN</span>
+                                    ${userAtual === 'Guilherme' ? `<button onclick="excluirMovimentacao('${mov.id}')" class="text-gray-300 hover:text-red-500 text-xs p-1">🗑️</button>` : ''}
                                 </div>
                             </div>`;
                     });
@@ -261,6 +256,18 @@
                 html += `</div>`;
             });
             container.innerHTML = html || `<p class="text-center text-[10px] font-black uppercase text-gray-400 p-10">Sem movimentações.</p>`;
+        }
+
+        // FUNÇÃO DE EXCLUSÃO CORRIGIDA
+        async function excluirMovimentacao(id) {
+            if(confirm("Excluir este registro de histórico? Isso não alterará o saldo atual do estoque.")) {
+                const { error } = await _supabase.from('movimentacoes').delete().eq('id', id);
+                if(!error) {
+                    carregarHistorico();
+                } else {
+                    alert("Erro ao excluir registro: " + error.message);
+                }
+            }
         }
 
         function imprimirOS(id) {
@@ -286,22 +293,6 @@
                     </div>
                 </div>`;
             window.print();
-        }
-
-        function toggleChat() { document.getElementById('chat-widget').classList.toggle('open'); }
-        async function enviarMensagem() {
-            const txt = document.getElementById('chat-input').value.trim();
-            if(!txt) return;
-            await _supabase.from('chat_suporte').insert([{ autor: userAtual, texto: txt }]);
-            document.getElementById('chat-input').value = ''; carregarChat();
-        }
-        async function carregarChat() {
-            const { data } = await _supabase.from('chat_suporte').select('*').order('data_hora', {ascending: true}).limit(50);
-            if(data) {
-                const c = document.getElementById('chat-messages');
-                c.innerHTML = data.map(m => `<div class="msg-bubble ${(m.autor === userAtual) ? 'msg-me' : 'msg-other'}"><p class="font-black text-[7px] uppercase mb-1">${m.autor}</p>${m.texto}</div>`).join('');
-                c.scrollTop = c.scrollHeight;
-            }
         }
 
         function abrirModalOS() { carrinhoOS = []; renderizarCarrinhoOS(); document.getElementById('modal-os').classList.remove('hidden'); }
