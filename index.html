@@ -3,400 +3,351 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estoque Master Pro - Sistema Integrado</title>
+    <title>Estoque ETA </title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         .aba-ativa { border-bottom: 3px solid #3b82f6; font-weight: bold; color: #1e40af; }
-        .card-clicavel { cursor: pointer; transition: all 0.2s; }
-        .card-clicavel:active { transform: scale(0.96); }
         .modal-blur { backdrop-filter: blur(8px); }
-        .dropdown-content { display: none; position: absolute; right: 0; top: 100%; z-index: 50; }
-        .dropdown:hover .dropdown-content { display: block; }
-        input:read-only { background-color: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        #app-container { display: none; }
+        
+        #chat-widget { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateY(20px); opacity: 0; pointer-events: none; }
+        #chat-widget.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+        .msg-bubble { max-width: 85%; padding: 8px 12px; border-radius: 18px; font-size: 12px; margin-bottom: 6px; position: relative; }
+        .msg-other { background: #e4e6eb; color: black; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .msg-me { background: #0084ff; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+
+        @media print {
+            body * { visibility: hidden !important; }
+            #print-area, #print-area * { visibility: visible !important; }
+            #print-area { 
+                position: absolute; left: 0; top: 0; width: 100%; height: 100vh;
+                display: flex !important; flex-direction: column; 
+                background: white; padding: 1.5cm; box-sizing: border-box;
+            }
+            .assinatura-container { margin-top: auto; padding-bottom: 1cm; width: 100%; text-align: center; }
+            @page { size: A4; margin: 0; }
+        }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen pb-20">
+<body class="bg-gray-100 min-h-screen">
 
-    <div id="modal-form-os" class="fixed inset-0 bg-black/60 z-[120] hidden flex items-center justify-center p-4 modal-blur">
-        <div class="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-6 border border-gray-100">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="font-black text-gray-800 uppercase text-xs tracking-widest">Nova Ordem de Serviço</h3>
-                <button onclick="fecharFormOS()" class="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            
-            <form id="form-nova-os" class="space-y-4">
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-[9px] font-black text-gray-400 uppercase">Encanador</label>
-                        <input type="text" id="os-encanador" required class="w-full border rounded-xl p-3 text-sm outline-none">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-black text-gray-400 uppercase">Local (Rua, Nº)</label>
-                        <input type="text" id="os-local" required placeholder="Ex: Rua A, 100" class="w-full border rounded-xl p-3 text-sm outline-none">
-                    </div>
+    <div id="print-area" class="hidden"></div>
+
+    <div id="modal-usuario" class="fixed inset-0 bg-black/60 z-[450] hidden flex items-center justify-center p-4 modal-blur">
+        <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-6">
+            <h2 class="text-xl font-black text-gray-800 mb-4 uppercase text-center tracking-tighter">Novo Acesso</h2>
+            <form id="form-usuario" class="space-y-3" onsubmit="salvarNovoUsuario(event)">
+                <input type="text" id="new-user-name" placeholder="Nome de Usuário" class="w-full border rounded-xl p-3 text-sm outline-none" required>
+                <input type="email" id="new-user-email" placeholder="E-mail" class="w-full border rounded-xl p-3 text-sm outline-none" required>
+                <input type="password" id="new-user-pass" placeholder="Senha" class="w-full border rounded-xl p-3 text-sm outline-none" required>
+                <div class="grid grid-cols-2 gap-3 pt-4">
+                    <button type="button" onclick="fecharModalUsuario()" class="bg-gray-100 text-gray-500 font-black py-4 rounded-2xl uppercase text-[10px]">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] shadow-lg">Cadastrar</button>
                 </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-[9px] font-black text-gray-400 uppercase">Data/Hora</label>
-                        <input type="datetime-local" id="os-data-hora" required class="w-full border rounded-xl p-3 text-sm outline-none">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-black text-gray-400 uppercase">Prioridade</label>
-                        <select id="os-prioridade" required class="w-full border rounded-xl p-3 text-sm outline-none bg-white font-bold">
-                            <option value="Baixa">🟢 BAIXA</option>
-                            <option value="Normal" selected>🟡 NORMAL</option>
-                            <option value="Alta">🔴 ALTA</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="text-[9px] font-black text-gray-400 uppercase">Código da O.S.</label>
-                        <input type="text" id="os-codigo-sequencial" readonly class="w-full border rounded-xl p-3 text-sm font-bold text-blue-600">
-                    </div>
-                    <div>
-                        <label class="text-[9px] font-black text-gray-400 uppercase">Quantidade</label>
-                        <input type="number" id="os-quantidade" required min="1" class="w-full border rounded-xl p-3 text-sm outline-none">
-                    </div>
-                </div>
-
-                <div>
-                    <label class="text-[9px] font-black text-gray-400 uppercase">Item do Inventário</label>
-                    <select id="os-item-id" required class="w-full border rounded-xl p-3 text-sm outline-none bg-white">
-                        <option value="">Selecione um item...</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="text-[9px] font-black text-gray-400 uppercase">Descrição/Finalidade</label>
-                    <textarea id="os-descricao" rows="2" class="w-full border rounded-xl p-3 text-sm outline-none resize-none"></textarea>
-                </div>
-
-                <button type="submit" id="btn-gravar-os" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest hover:bg-blue-700 transition shadow-lg">Gravar Ordem de Serviço</button>
             </form>
         </div>
     </div>
 
-    <div id="modal-detalhe-geral" class="fixed inset-0 bg-black/60 z-[110] hidden flex items-center justify-center p-4 modal-blur">
-        <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8 text-center">
-            <h3 id="detalhe-titulo" class="font-black text-gray-800 uppercase text-xs mb-4">DETALHES</h3>
-            <div id="detalhe-conteudo" class="space-y-4 text-sm text-gray-600 text-left mb-6"></div>
-            <button onclick="document.getElementById('modal-detalhe-geral').classList.add('hidden')" class="w-full bg-gray-900 text-white font-black py-4 rounded-2xl text-[10px] uppercase">FECHAR</button>
+    <div id="modal-os" class="fixed inset-0 bg-black/60 z-[400] hidden flex items-center justify-center p-4 modal-blur">
+        <div class="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
+            <h2 class="text-xl font-black text-gray-800 mb-4 uppercase text-center">Gerar Ordem de Serviço</h2>
+            <form id="form-os" class="space-y-3" onsubmit="salvarOS(event)">
+                <input type="text" id="os-nome" placeholder="Nome do Cliente" class="w-full border rounded-xl p-3 text-sm outline-none" required>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="os-endereco" placeholder="Endereço" class="border rounded-xl p-3 text-sm outline-none" required>
+                    <input type="text" id="os-bairro" placeholder="Bairro" class="border rounded-xl p-3 text-sm outline-none" required>
+                </div>
+                <input type="text" id="os-ponto" placeholder="Ponto de Referência" class="w-full border rounded-xl p-3 text-sm outline-none">
+                <select id="os-prioridade" class="w-full border rounded-xl p-3 text-sm outline-none bg-gray-50">
+                    <option value="Baixo">🟢 Baixo</option>
+                    <option value="Comum" selected>⚪ Comum</option>
+                    <option value="Alta">🟡 Alta</option>
+                    <option value="Urgente">🔴 Urgente</option>
+                </select>
+                <div class="border-t pt-3">
+                    <p class="text-[10px] font-black text-gray-400 mb-2 uppercase">Materiais Selecionados:</p>
+                    <div id="os-carrinho" class="space-y-2 mb-3"></div>
+                    <button type="button" onclick="adicionarMaterialNaOS()" class="w-full bg-blue-50 text-blue-600 font-bold py-2 rounded-xl text-xs">+ Adicionar Item de Estoque</button>
+                </div>
+                <div class="grid grid-cols-2 gap-3 pt-4">
+                    <button type="button" onclick="fecharModalOS()" class="bg-gray-100 text-gray-500 font-black py-4 rounded-2xl uppercase text-[10px]">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 text-white font-black py-4 rounded-2xl uppercase text-[10px] shadow-lg">Salvar O.S.</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div id="app" class="max-w-6xl mx-auto p-4">
-        <header class="bg-white shadow-sm rounded-2xl p-5 mb-6 border border-gray-100">
-            <div class="flex justify-between items-center mb-4">
-                <div>
-                    <h1 class="text-xl font-black text-gray-800 tracking-tighter">MEU ESTOQUE</h1>
-                    <span id="user-status-display" class="text-[10px] text-blue-500 font-black uppercase tracking-widest">ADMIN | Jardim</span>
-                </div>
-                
-                <div class="relative dropdown">
-                    <button class="bg-gray-100 p-3 rounded-xl text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg></button>
-                    <div class="dropdown-content pt-2 w-56">
-                        <div class="bg-white border rounded-2xl shadow-2xl p-2 space-y-1">
-                            <button onclick="window.criarCategoria()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 rounded-xl">📁 Nova Categoria</button>
-                            <button onclick="window.criarItem()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 rounded-xl">📦 Novo Produto</button>
-                            <button onclick="window.adicionarQuantidadeEstoque()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-green-600 hover:bg-green-50 rounded-xl">➕ Adicionar Estoque</button>
-                            <hr class="my-1">
-                            <button onclick="abrirFormOS()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-blue-600 hover:bg-blue-50 rounded-xl">📝 Gerar O.S.</button>
-                            <button onclick="imprimirOSBranco()" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 rounded-xl">🖨️ Imprimir O.S. Branco</button>
-                            <button onclick="mudarAba('relatorio-final')" class="w-full text-left px-4 py-3 text-[10px] font-black uppercase text-purple-600 hover:bg-purple-50 rounded-xl">📊 Relatórios Detalhados</button>
-                        </div>
+    <div id="auth-container" class="fixed inset-0 bg-blue-600 flex items-center justify-center p-4 z-[300]">
+        <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl p-8 text-center">
+            <h2 class="text-2xl font-black text-gray-800 mb-6 uppercase tracking-tighter">Acesso ao Sistema</h2>
+            <div class="space-y-4">
+                <input type="text" id="login-user" placeholder="Usuário" class="w-full border-b-2 p-3 outline-none focus:border-blue-500">
+                <input type="password" id="login-pass" placeholder="Senha" class="w-full border-b-2 p-3 outline-none focus:border-blue-500">
+            </div>
+            <button onclick="fazerLogin()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl mt-6 shadow-lg">ENTRAR</button>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <header class="max-w-6xl mx-auto p-4 flex justify-between items-center bg-white shadow-sm rounded-2xl mt-4 mb-6 mx-4">
+            <div>
+                <h1 class="text-xl font-black text-gray-800 uppercase tracking-tighter">Estoque ETA SJB</h1>
+                <span id="display-user" class="text-[10px] text-blue-500 font-black uppercase tracking-widest">---</span>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="abrirModalOS()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md">Nova O.S.</button>
+                <div class="relative">
+                    <button id="btn-config" onclick="toggleMenu()" class="bg-gray-100 p-2 rounded-xl text-gray-600 focus:bg-gray-200">⚙️</button>
+                    <div id="dropdown-config" class="hidden absolute right-0 top-full mt-2 w-48 z-[600]">
+                        <div id="menu-content" class="bg-white border rounded-xl shadow-xl p-2"></div>
                     </div>
                 </div>
             </div>
-
-            <nav class="flex justify-around text-[10px] font-black text-gray-400 border-t pt-4 uppercase tracking-widest">
-                <button id="btn-estoque" onclick="mudarAba('estoque')" class="aba-ativa">Estoque</button>
-                <button id="btn-relatorios" onclick="mudarAba('relatorios')">Feed O.S.</button>
-                <button id="btn-relatorio-final" onclick="mudarAba('relatorio-final')">Relatório Detalhado</button>
-            </nav>
         </header>
 
-        <section id="aba-estoque" class="aba"><div id="lista-estoque" class="space-y-4"></div></section>
-        <section id="aba-relatorios" class="aba hidden"><div id="historico-os" class="space-y-3"></div></section>
-        
-        <section id="aba-relatorio-final" class="aba hidden">
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
-                <table class="w-full text-left border-collapse min-w-[1000px]">
-                    <thead class="bg-gray-50 border-b">
-                        <tr>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Prioridade</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Cód O.S.</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Encanador</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Local</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Data/Hora</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Material/Qtd</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase">Finalidade</th>
-                            <th class="p-4 text-[9px] font-black text-gray-400 uppercase text-center">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabela-relatorio-corpo"></tbody>
-                </table>
+        <div id="app" class="max-w-6xl mx-auto p-4 pb-24">
+            <nav class="flex justify-around text-[10px] font-black text-gray-400 border-b p-4 uppercase bg-white rounded-t-2xl">
+                <button id="btn-estoque" onclick="mudarAba('estoque')" class="aba-ativa">Estoque</button>
+                <button id="btn-ordens" onclick="mudarAba('ordens')">Ordens</button>
+                <button id="btn-relatorios" onclick="mudarAba('relatorios')">Movimentações</button>
+            </nav>
+
+            <div class="bg-white p-4 rounded-b-2xl border-x border-b shadow-sm min-h-[400px]">
+                <section id="aba-estoque" class="aba-secao">
+                    <div id="lista-estoque" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </section>
+                <section id="aba-ordens" class="aba-secao hidden">
+                    <div id="lista-ordens" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </section>
+                <section id="aba-relatorios" class="aba-secao hidden">
+                    <div id="historico-agrupado" class="space-y-6"></div>
+                </section>
             </div>
-        </section>
+        </div>
+    </div>
+
+    <div id="chat-container" class="fixed bottom-6 right-6 z-[500] flex flex-col items-end">
+        <div id="chat-widget" class="bg-white w-80 h-[450px] rounded-[24px] shadow-2xl flex flex-col mb-4 overflow-hidden border border-gray-200">
+            <div class="bg-blue-600 p-4 text-white flex justify-between items-center shadow-md">
+                <span class="text-[10px] font-black uppercase tracking-widest">Grupo de Suporte</span>
+                <button onclick="toggleChat()" class="text-xl">×</button>
+            </div>
+            <div id="chat-messages" class="flex-1 p-4 overflow-y-auto flex flex-col gap-2 bg-gray-50"></div>
+            <div class="p-3 bg-white border-t flex gap-2">
+                <input type="text" id="chat-input" placeholder="Escreva aqui..." class="flex-1 text-xs p-3 bg-gray-100 rounded-xl outline-none">
+                <button onclick="enviarMensagem()" class="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center font-bold">➤</button>
+            </div>
+        </div>
+        <button onclick="toggleChat()" class="bg-blue-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl">💬</button>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://rkdpdfewahcrvmnuhptu.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHBkZmV3YWhjcnZtbnVocHR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NTQxNzQsImV4cCI6MjA5MTEzMDE3NH0.5hx8QhIEnEIQ8aZhXlvoOENg0MCBtSgFYh_4mTNCe4k';
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let userAtual = localStorage.getItem('estoque_user') || "";
+        let ordensCache = [];
+        let carrinhoOS = [];
+
+        window.onload = () => { if (userAtual) entrarNoApp(); carregarChat(); setInterval(carregarChat, 5000); };
+
+        async function fazerLogin() {
+            const u = document.getElementById('login-user').value.trim();
+            const p = document.getElementById('login-pass').value.trim();
+            const { data } = await _supabase.from('usuarios_sistema').select('*').eq('username', u).eq('senha', p);
+            if(data?.length > 0) { userAtual = data[0].username; localStorage.setItem('estoque_user', userAtual); entrarNoApp(); } else alert("Dados inválidos.");
+        }
+
+        function entrarNoApp() { document.getElementById('auth-container').classList.add('hidden'); document.getElementById('app-container').style.display = 'block'; document.getElementById('display-user').innerText = `USUÁRIO: ${userAtual}`; carregarEstoque(); }
+        function logout() { localStorage.clear(); location.reload(); }
+
+        function toggleMenu() {
+            const menu = document.getElementById('dropdown-config');
+            const content = document.getElementById('menu-content');
+            let menuHtml = "";
+            if (userAtual === "Guilherme") {
+                menuHtml += `
+                    <button onclick="cadastrarCategoria()" class="w-full text-left p-3 text-[10px] font-bold uppercase hover:bg-gray-50 rounded-lg">📁 Nova Categoria</button>
+                    <button onclick="cadastrarProduto()" class="w-full text-left p-3 text-[10px] font-bold uppercase hover:bg-gray-50 rounded-lg">📦 Novo Produto</button>
+                    <button onclick="adicionarQuantidadeEstoque()" class="w-full text-left p-3 text-[10px] font-bold uppercase text-green-600 hover:bg-gray-50 rounded-lg">➕ Entrada Estoque</button>
+                    <button onclick="abrirModalUsuario()" class="w-full text-left p-3 text-[10px] font-bold uppercase text-blue-600 hover:bg-blue-50 rounded-lg">👤 Novo Usuário</button>
+                    <hr class="my-1 border-gray-100">`;
+            }
+            menuHtml += `<button onclick="logout()" class="w-full text-left p-3 text-[10px] font-black text-red-500 hover:bg-red-50 rounded-lg uppercase">Sair do Sistema</button>`;
+            content.innerHTML = menuHtml;
+            menu.classList.toggle('hidden');
+        }
+
+        // Funções Modal Usuário
+        function abrirModalUsuario() { document.getElementById('modal-usuario').classList.remove('hidden'); document.getElementById('dropdown-config').classList.add('hidden'); }
+        function fecharModalUsuario() { document.getElementById('modal-usuario').classList.add('hidden'); document.getElementById('form-usuario').reset(); }
         
-        let cacheMovimentacoes = [];
-        let cacheItens = [];
-        let nivelUsuario = "ADMIN"; 
-
-        async function carregarDadosIniciais() {
-            await carregarEstoque();
-            await renderizarHistoricoOS();
-        }
-
-        function mudarAba(aba) {
-            document.querySelectorAll('.aba').forEach(a => a.classList.add('hidden'));
-            document.querySelectorAll('nav button').forEach(b => b.classList.remove('aba-ativa'));
-            const btn = document.getElementById(`btn-${aba}`);
-            if(btn) btn.classList.add('aba-ativa');
-            document.getElementById(`aba-${aba}`).classList.remove('hidden');
-
-            if(aba === 'relatorio-final') {
-                atualizarTabelaRelatorio();
-            } else if(aba === 'relatorios') {
-                renderizarHistoricoOS();
-            }
-        }
-
-        // --- FUNÇÃO DE IMPRESSÃO (SEM PRIORIDADE) ---
-        function imprimirOSBranco() {
-            const win = window.open('', '_blank');
-            win.document.write(`
-                <html>
-                <head>
-                    <title>Imprimir O.S. em Branco</title>
-                    <style>
-                        body { font-family: sans-serif; padding: 40px; color: #333; }
-                        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 30px; }
-                        .field { margin-bottom: 25px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-                        .label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #666; display: block; }
-                        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-                        .box { border: 1px solid #000; height: 120px; margin-top: 10px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h2 style="margin:0">ORDEM DE SERVIÇO - PREENCHIMENTO MANUAL</h2>
-                        <p style="font-size: 12px">Controle de Estoque e Manutenção</p>
-                    </div>
-                    <div class="grid">
-                        <div class="field"><span class="label">Encanador</span></div>
-                        <div class="field"><span class="label">Local (Rua, Nº)</span></div>
-                    </div>
-                    <div class="grid">
-                        <div class="field"><span class="label">Data / Hora</span></div>
-                        <div class="field"><span class="label">Item do Inventário</span></div>
-                    </div>
-                    <div class="field">
-                        <span class="label">Quantidade</span>
-                    </div>
-                    <div class="field" style="border:none">
-                        <span class="label">Descrição / Finalidade</span>
-                        <div class="box"></div>
-                    </div>
-                    <div style="margin-top: 50px; text-align: center; font-size: 10px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px;">
-                        Documento gerado para fins de registro manual de campo.
-                    </div>
-                </body>
-                </html>
-            `);
-            win.document.close();
-            win.print();
-        }
-
-        // --- GESTÃO DE PRODUTOS ---
-        window.criarCategoria = async () => {
-            const n = prompt("Nome da Categoria:");
-            if(n) { await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); }
-        };
-
-        window.criarItem = async () => {
-            const { data: c } = await _supabase.from('categorias').select('*');
-            const e = prompt("Selecione Categoria:\n" + c.map((cat,i)=>`${i}) ${cat.nome}`).join('\n'));
-            const n = prompt("Nome do Produto:");
-            if(n && c[e]) { await _supabase.from('itens').insert([{ nome: n, categoria_id: c[e].id, quantidade: 0 }]); carregarEstoque(); }
-        };
-
-        window.adicionarQuantidadeEstoque = async () => {
-            const { data: it } = await _supabase.from('itens').select('*').order('nome');
-            const e = prompt("Entrada em qual produto?\n" + it.map((item,i)=>`${i}) ${item.nome}`).join('\n'));
-            const q = parseInt(prompt("Qtd:"));
-            if(it[e] && !isNaN(q)) {
-                await _supabase.from('movimentacoes').insert([{ item_id: it[e].id, quantidade_alterada: q, data_movimentacao: new Date().toISOString() }]);
-                await _supabase.from('itens').update({ quantidade: it[e].quantidade + q }).eq('id', it[e].id);
-                carregarEstoque();
-            }
-        };
-
-        // --- LÓGICA DE ORDEM DE SERVIÇO ---
-        async function abrirFormOS() {
-            const { data: itens } = await _supabase.from('itens').select('*').order('nome');
-            cacheItens = itens || [];
-            const select = document.getElementById('os-item-id');
-            select.innerHTML = '<option value="">Selecione um item...</option>' + 
-                cacheItens.map(it => `<option value="${it.id}">${it.nome} (Saldo: ${it.quantidade})</option>`).join('');
-
-            const { data: ordens } = await _supabase.from('ordens_servico').select('id');
-            document.getElementById('os-codigo-sequencial').value = `O.S. ${(ordens ? ordens.length + 1 : 1).toString().padStart(3, '0')}`;
-            
-            document.getElementById('form-nova-os').reset();
-            document.getElementById('os-data-hora').value = new Date().toLocaleString("sv-SE").slice(0, 16);
-            document.getElementById('modal-form-os').classList.remove('hidden');
-        }
-
-        function fecharFormOS() { document.getElementById('modal-form-os').classList.add('hidden'); }
-
-        document.getElementById('form-nova-os').onsubmit = async (e) => {
+        async function salvarNovoUsuario(e) {
             e.preventDefault();
-            const btn = document.getElementById('btn-gravar-os');
-            btn.disabled = true; btn.innerText = "GRAVANDO...";
-
-            const itemId = document.getElementById('os-item-id').value;
-            const qtd = parseInt(document.getElementById('os-quantidade').value);
-            const encanador = document.getElementById('os-encanador').value;
-            const localCompleto = document.getElementById('os-local').value;
-            const finalidade = document.getElementById('os-descricao').value;
-            const codigoOS = document.getElementById('os-codigo-sequencial').value;
-            const prioridade = document.getElementById('os-prioridade').value;
-            const itemOriginal = cacheItens.find(i => i.id === itemId);
-
-            const detalheTexto = `[PRIORIDADE: ${prioridade}] || ENCANADOR: ${encanador} || LOCAL: ${localCompleto} || FINALIDADE: ${finalidade}`;
-            const { data: movData, error: movError } = await _supabase.from('movimentacoes').insert([{ 
-                item_id: itemId, 
-                quantidade_alterada: -qtd,
-                data_movimentacao: new Date(document.getElementById('os-data-hora').value).toISOString()
-            }]).select();
-
-            if (!movError && movData[0]) {
-                await _supabase.from('observacoes').insert([{ movimentacao_id: movData[0].id, descricao: detalheTexto }]);
-
-                const partes = localCompleto.split(',');
-                await _supabase.from('ordens_servico').insert([{
-                    codigo_os: codigoOS,
-                    encanador: encanador,
-                    endereco_rua: partes[0].trim(),
-                    endereco_numero: partes[1] ? partes[1].trim() : 'S/N',
-                    material_id: itemId,
-                    quantidade: qtd,
-                    prioridade: prioridade,
-                    data_hora: new Date(document.getElementById('os-data-hora').value).toISOString(),
-                    finalidade: finalidade,
-                    movimentacao_vinculo_id: movData[0].id
-                }]);
-
-                await _supabase.from('itens').update({ quantidade: itemOriginal.quantidade - qtd }).eq('id', itemId);
-                
-                alert("O.S. Gravada com Sucesso!");
-                fecharFormOS();
-                await carregarEstoque();
-                await renderizarHistoricoOS();
+            const user = document.getElementById('new-user-name').value.trim();
+            const email = document.getElementById('new-user-email').value.trim();
+            const pass = document.getElementById('new-user-pass').value.trim();
+            
+            const { error } = await _supabase.from('usuarios_sistema').insert([{ username: user, email: email, senha: pass }]);
+            
+            if(!error) {
+                alert("Usuário cadastrado com sucesso!");
+                fecharModalUsuario();
             } else {
-                alert("Erro: " + (movError ? movError.message : "Desconhecido"));
+                alert("Erro ao cadastrar: " + error.message);
             }
-            btn.disabled = false; btn.innerText = "Gravar Ordem de Serviço";
-        };
-
-        // --- RENDERIZAÇÃO ---
-        async function renderizarHistoricoOS() {
-            const { data: movs } = await _supabase.from('movimentacoes').select('*, itens(nome), observacoes(descricao)').lt('quantidade_alterada', 0).order('data_movimentacao', { ascending: false });
-            if (!movs) return;
-            cacheMovimentacoes = movs;
-            document.getElementById('historico-os').innerHTML = movs.map(os => `
-                <div class="bg-white p-4 rounded-2xl border mb-3 flex justify-between items-center shadow-sm">
-                    <div onclick="verDetalheOS('${os.id}')" class="card-clicavel flex-1">
-                        <p class="text-[10px] font-black text-blue-500 uppercase">O.S.</p>
-                        <h4 class="text-sm font-black text-gray-800">${os.itens?.nome}</h4>
-                        <p class="text-[10px] text-gray-400">${new Date(os.data_movimentacao).toLocaleDateString()}</p>
-                    </div>
-                    <span class="text-red-500 font-black">${os.quantidade_alterada}</span>
-                </div>`).join('');
         }
 
-        async function atualizarTabelaRelatorio() {
-            const { data: listaOS } = await _supabase.from('ordens_servico').select('*, itens(nome)').order('data_hora', { ascending: false });
-            if (!listaOS) return;
-
-            const badgeCores = {
-                'Alta': 'bg-red-500 text-white',
-                'Normal': 'bg-yellow-400 text-gray-900',
-                'Baixa': 'bg-green-500 text-white'
-            };
-
-            document.getElementById('tabela-relatorio-corpo').innerHTML = listaOS.map(os => `
-                <tr class="border-b hover:bg-gray-50 text-[11px]">
-                    <td class="p-4">
-                        <span class="px-2 py-1 rounded font-black text-[8px] uppercase ${badgeCores[os.prioridade] || 'bg-gray-200'}">
-                            ${os.prioridade || 'Normal'}
-                        </span>
-                    </td>
-                    <td class="p-4 font-black text-blue-600">${os.codigo_os}</td>
-                    <td class="p-4 font-bold text-gray-700 uppercase">${os.encanador}</td>
-                    <td class="p-4 text-gray-600">${os.endereco_rua}, ${os.endereco_numero}</td>
-                    <td class="p-4 text-gray-400">${new Date(os.data_hora).toLocaleString('pt-BR')}</td>
-                    <td class="p-4 font-bold">${os.itens?.nome || 'Item'} (${os.quantidade})</td>
-                    <td class="p-4 text-gray-500 italic">${os.finalidade || '---'}</td>
-                    <td class="p-4 text-center">
-                        <button onclick="excluirOSRelatorio('${os.id}', '${os.material_id}', ${os.quantidade}, '${os.movimentacao_vinculo_id}')" 
-                                class="text-red-400 hover:text-red-600 transition p-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                        </button>
-                    </td>
-                </tr>`).join('');
+        function mudarAba(idAba) {
+            const secoes = ['aba-estoque', 'aba-ordens', 'aba-relatorios'];
+            const botoes = ['btn-estoque', 'btn-ordens', 'btn-relatorios'];
+            secoes.forEach(s => document.getElementById(s).classList.add('hidden'));
+            botoes.forEach(b => document.getElementById(b).classList.remove('aba-ativa'));
+            document.getElementById(`aba-${idAba}`).classList.remove('hidden');
+            document.getElementById(`btn-${idAba}`).classList.add('aba-ativa');
+            if(idAba === 'estoque') carregarEstoque();
+            if(idAba === 'ordens') carregarOrdens();
+            if(idAba === 'relatorios') carregarHistorico();
         }
-
-        async function excluirOSRelatorio(idOS, idItem, qtd, idMovVinculo) {
-            if (nivelUsuario !== "ADMIN") return alert("Somente administradores podem excluir.");
-            if (!confirm("Deseja realmente excluir esta O.S.? O estoque será devolvido.")) return;
-
-            try {
-                const { data: item } = await _supabase.from('itens').select('quantidade').eq('id', idItem).single();
-                await _supabase.from('itens').update({ quantidade: item.quantidade + qtd }).eq('id', idItem);
-                await _supabase.from('ordens_servico').delete().eq('id', idOS);
-
-                if (idMovVinculo && idMovVinculo !== 'undefined') {
-                    await _supabase.from('observacoes').delete().eq('movimentacao_id', idMovVinculo);
-                    await _supabase.from('movimentacoes').delete().eq('id', idMovVinculo);
-                }
-
-                alert("O.S. excluída e estoque estornado!");
-                await carregarEstoque();
-                await atualizarTabelaRelatorio();
-                await renderizarHistoricoOS();
-            } catch (e) { alert("Erro ao excluir."); }
-        }
-
-        window.verDetalheOS = (id) => {
-            const os = cacheMovimentacoes.find(x => x.id == id);
-            document.getElementById('detalhe-conteudo').innerHTML = `<p class="text-xs text-gray-700">${os?.observacoes?.[0]?.descricao.replaceAll(" || ", "<br>") || 'Sem detalhes'}</p>`;
-            document.getElementById('modal-detalhe-geral').classList.remove('hidden');
-        };
 
         async function carregarEstoque() {
             const { data } = await _supabase.from('itens').select('*, categorias(nome)').order('nome');
-            if(!data) return;
-            document.getElementById('lista-estoque').innerHTML = data.map(it => `
-                <div class="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-                    <div><p class="text-[8px] font-black text-gray-400 uppercase">${it.categorias?.nome || 'Geral'}</p><span class="font-bold text-gray-700">${it.nome}</span></div>
-                    <span class="text-blue-600 font-black">Saldo: ${it.quantidade}</span>
-                </div>`).join('');
+            if(data) document.getElementById('lista-estoque').innerHTML = data.map(it => `<div class="bg-white p-4 border rounded-xl flex justify-between shadow-sm"><span class="font-bold uppercase text-[11px]">${it.nome}</span><span class="text-blue-600 font-black text-[11px]">DISP: ${it.quantidade}</span></div>`).join('');
         }
 
-        window.onload = carregarDadosIniciais;
+        async function carregarOrdens() {
+            const { data } = await _supabase.from('ordens_servico').select('*').order('data_hora', {ascending: false});
+            if(data) { ordensCache = data; document.getElementById('lista-ordens').innerHTML = data.map(os => `<div class="bg-white p-5 rounded-2xl border shadow-md"><h3 class="font-black uppercase">${os.nome_cliente}</h3><p class="text-[10px] text-gray-500 mb-4">${os.endereco}</p><button onclick="imprimirOS('${os.id}')" class="w-full bg-gray-800 text-white p-2 rounded-xl text-[10px] font-black">IMPRIMIR</button></div>`).join(''); }
+        }
+
+        async function carregarHistorico() {
+            const container = document.getElementById('historico-agrupado');
+            container.innerHTML = `<p class="text-center text-[10px] font-black uppercase text-gray-400 p-10">Carregando movimentações...</p>`;
+            const { data, error } = await _supabase.from('movimentacoes').select('*, itens(nome)').order('data_movimentacao', {ascending: false});
+            if(error || !data) { container.innerHTML = `<p class="text-center text-red-500 text-[10px] font-black uppercase">ERRO AO CARREGAR</p>`; return; }
+            const mesesNomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+            const agrupado = {};
+            data.forEach(mov => {
+                const d = new Date(mov.data_movimentacao);
+                const a = d.getFullYear(); const m = mesesNomes[d.getMonth()];
+                if (!agrupado[a]) agrupado[a] = {}; if (!agrupado[a][m]) agrupado[a][m] = [];
+                agrupado[a][m].push(mov);
+            });
+            let html = "";
+            Object.keys(agrupado).sort((a,b)=>b-a).forEach(ano => {
+                html += `<div class="mb-8"><h2 class="text-lg font-black text-gray-800 border-l-4 border-blue-600 pl-3 mb-4 uppercase tracking-tighter">${ano}</h2>`;
+                Object.keys(agrupado[ano]).sort((a,b)=>mesesNomes.indexOf(b)-mesesNomes.indexOf(a)).forEach(mes => {
+                    html += `<div class="bg-gray-100/50 rounded-3xl p-5 mb-6 border border-gray-200"><h3 class="text-[11px] font-black text-blue-600 uppercase mb-4 tracking-widest flex items-center">📅 ${mes}</h3><div class="grid grid-cols-1 gap-3">`;
+                    agrupado[ano][mes].forEach(mov => {
+                        const isEntrada = mov.quantidade_alterada > 0;
+                        const cor = isEntrada ? "text-green-600" : (mov.quantidade_alterada < 0 ? "text-red-600" : "text-gray-400");
+                        const sinal = isEntrada ? "+" : "";
+                        const hora = new Date(mov.data_movimentacao).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                        html += `
+                            <div class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
+                                <div>
+                                    <p class="font-black text-[11px] text-gray-800 uppercase leading-none">${mov.itens?.nome || 'Item Excluído'}</p>
+                                    <p class="text-[8px] font-bold text-gray-400 uppercase mt-1">🕒 ${hora} • ${mov.tipo}</p>
+                                </div>
+                                <div class="text-right">
+                                    <span class="font-black ${cor} text-[13px] tabular-nums">${sinal}${mov.quantidade_alterada} UN</span>
+                                </div>
+                            </div>`;
+                    });
+                    html += `</div></div>`;
+                });
+                html += `</div>`;
+            });
+            container.innerHTML = html || `<p class="text-center text-[10px] font-black uppercase text-gray-400 p-10">Sem movimentações.</p>`;
+        }
+
+        function imprimirOS(id) {
+            const os = ordensCache.find(x => x.id === id);
+            if(!os) return;
+            const area = document.getElementById('print-area');
+            area.innerHTML = `
+                <div style="flex: 1;">
+                    <h1 style="text-align: center; text-transform: uppercase; font-size: 18px; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 15px;">Ordem de Serviço</h1>
+                    <div style="font-size: 11px; line-height: 1.4; margin-bottom: 20px;">
+                        <p><b>CLIENTE:</b> ${os.nome_cliente}</p>
+                        <p><b>ENDEREÇO:</b> ${os.endereco}, ${os.bairro}</p>
+                        <p><b>PONTO DE REF:</b> ${os.ponto_referencia || 'N/A'}</p>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <thead><tr style="background: #eee;"><th style="border: 1px solid #000; padding: 6px; text-align: left;">DESCRIÇÃO</th><th style="border: 1px solid #000; padding: 6px; width: 80px;">QUANTIDADE</th></tr></thead>
+                        <tbody>${os.materiais_json.map(m => `<tr><td style="border: 1px solid #000; padding: 6px;">${m.nome}</td><td style="border: 1px solid #000; padding: 6px; text-align: center;">${m.quantidade} UN</td></tr>`).join('')}</tbody>
+                    </table>
+                </div>
+                <div class="assinatura-container">
+                    <div style="border-top: 1.5px solid #000; width: 300px; margin: 0 auto; padding-top: 5px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+                        Assinatura do Responsável
+                    </div>
+                </div>`;
+            window.print();
+        }
+
+        function toggleChat() { document.getElementById('chat-widget').classList.toggle('open'); }
+        async function enviarMensagem() {
+            const txt = document.getElementById('chat-input').value.trim();
+            if(!txt) return;
+            await _supabase.from('chat_suporte').insert([{ autor: userAtual, texto: txt }]);
+            document.getElementById('chat-input').value = ''; carregarChat();
+        }
+        async function carregarChat() {
+            const { data } = await _supabase.from('chat_suporte').select('*').order('data_hora', {ascending: true}).limit(50);
+            if(data) {
+                const c = document.getElementById('chat-messages');
+                c.innerHTML = data.map(m => `<div class="msg-bubble ${(m.autor === userAtual) ? 'msg-me' : 'msg-other'}"><p class="font-black text-[7px] uppercase mb-1">${m.autor}</p>${m.texto}</div>`).join('');
+                c.scrollTop = c.scrollHeight;
+            }
+        }
+
+        function abrirModalOS() { carrinhoOS = []; renderizarCarrinhoOS(); document.getElementById('modal-os').classList.remove('hidden'); }
+        function fecharModalOS() { document.getElementById('modal-os').classList.add('hidden'); }
+        function renderizarCarrinhoOS() { document.getElementById('os-carrinho').innerHTML = carrinhoOS.map(i=>`<div class="text-[9px] bg-blue-50 p-2 border rounded-lg flex justify-between uppercase"><span>${i.nome}</span><b>${i.quantidade}x</b></div>`).join(''); }
+        
+        async function adicionarMaterialNaOS() {
+            const { data } = await _supabase.from('itens').select('*').order('nome');
+            const e = prompt("Escolha o Item:\n" + data.map((it,idx)=>`${idx}) ${it.nome} (Disp: ${it.quantidade})`).join('\n'));
+            if(data[e]) { const q = parseInt(prompt("Quantidade:")); if(q > 0) { carrinhoOS.push({id:data[e].id, nome:data[e].nome, quantidade:q}); renderizarCarrinhoOS(); } }
+        }
+
+        async function salvarOS(e) {
+            e.preventDefault();
+            const { error } = await _supabase.from('ordens_servico').insert([{ nome_cliente: document.getElementById('os-nome').value, endereco: document.getElementById('os-endereco').value, bairro: document.getElementById('os-bairro').value, ponto_referencia: document.getElementById('os-ponto').value, prioridade: document.getElementById('os-prioridade').value, materiais_json: carrinhoOS, autor: userAtual }]);
+            if(!error) {
+                for(let item of carrinhoOS) {
+                    const { data: itemBD } = await _supabase.from('itens').select('quantidade').eq('id', item.id).single();
+                    await _supabase.from('itens').update({ quantidade: itemBD.quantidade - item.quantidade }).eq('id', item.id);
+                    await _supabase.from('movimentacoes').insert([{ item_id: item.id, quantidade_alterada: -item.quantidade, tipo: 'SAÍDA (O.S.)' }]);
+                }
+                alert("O.S. Salva!"); fecharModalOS(); mudarAba('ordens');
+            }
+        }
+
+        async function cadastrarCategoria() { const n = prompt("Nova Categoria:"); if(n) await _supabase.from('categorias').insert([{ nome: n.toUpperCase() }]); carregarEstoque(); }
+        async function cadastrarProduto() {
+            const { data: cats } = await _supabase.from('categorias').select('*');
+            const i = prompt("Categoria:\n" + cats.map((c, idx) => `${idx} - ${c.nome}`).join('\n'));
+            const n = prompt("Produto:"); 
+            if (n && cats[i]) {
+                const { data: nIt } = await _supabase.from('itens').insert([{ nome: n.toUpperCase(), categoria_id: cats[i].id, quantidade: 0 }]).select().single();
+                if(nIt) await _supabase.from('movimentacoes').insert([{ item_id: nIt.id, quantidade_alterada: 0, tipo: 'PRODUTO NOVO' }]);
+                carregarEstoque();
+            }
+        }
+        async function adicionarQuantidadeEstoque() {
+            const { data: its } = await _supabase.from('itens').select('*').order('nome');
+            const i = prompt("Produto:\n" + its.map((it, idx) => `${idx} - ${it.nome}`).join('\n'));
+            const q = parseInt(prompt("Quantidade:")); 
+            if (its[i] && !isNaN(q)) { 
+                await _supabase.from('itens').update({ quantidade: its[i].quantidade + q }).eq('id', its[i].id); 
+                await _supabase.from('movimentacoes').insert([{ item_id: its[i].id, quantidade_alterada: q, tipo: 'ENTRADA' }]); 
+                carregarEstoque(); 
+            }
+        }
     </script>
 </body>
 </html>
